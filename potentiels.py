@@ -35,13 +35,18 @@ def nfw():
                     dtype=[('name', object), ('float', float)])
     ellipticite=np.array(('ellipticite', 0), \
                     dtype=[('name', object), ('float',float)])
+    e1 =np.array(('e1', 0), \
+                    dtype=[('name', object), ('float',float)])
+    e2 =np.array(('e2', 0), \
+                    dtype=[('name', object), ('float',float)])
     angle_pos=np.array(('angle_pos', 0), \
                     dtype=[('name', object), ('float', float)])
     alpha=np.array(('alpha', 0), \
                     dtype=[('name', object), ('float', float)])
                     
     return { 'profil':profil, 'x_centre':x_centre, 'y_centre':y_centre, \
-            'ellipticite':ellipticite, 'angle_pos':angle_pos, \
+            'ellipticite':ellipticite, 'e1':e1, 'e2':e2,\
+            'angle_pos':angle_pos, \
             'm200':m200, 'concentration':concentration, 'z_lens':z_lens,\
             'alpha':alpha, 'identity':identity}
 
@@ -63,8 +68,13 @@ def piemd():
                     dtype=[('name', object), ('float', float)])
     ellipticity=np.array(('ellipticite', 0), \
                     dtype=[('name', object), ('float', float)])
+    
     angle_pos=np.array(('angle_pos', 0), \
                     dtype=[('name', object), ('float', float)])
+    e1 =np.array(('e1', 0), \
+                    dtype=[('name', object), ('float',float)])
+    e2 =np.array(('e2', 0), \
+                    dtype=[('name', object), ('float',float)])
     core_radius=np.array(('core_radius', 1.0), \
                     dtype=[('name', object), ('float', float)])
     cut_radius=np.array(('cut_radius', 450), \
@@ -76,7 +86,8 @@ def piemd():
                     dtype=[('name', object), ('str', object)])
                     
     return { 'profil':profil, 'x_centre':x_centre, 'y_centre':y_centre, \
-            'ellipticite':ellipticity, 'core_radius':core_radius, \
+            'ellipticite':ellipticity, 'e1':e1, 'e2':e2, \
+            'core_radius':core_radius, \
             'cut_radius':cut_radius, 'v_disp':v_disp, 'z_lens':z_lens,
             'angle_pos':angle_pos, 'identity':identity}
 

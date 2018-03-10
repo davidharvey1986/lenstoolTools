@@ -30,10 +30,14 @@ def nfw():
             dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
     alpha = np.array(('alpha', 0, 0, 1, 0.01), \
             dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
-
+    e1 = np.array(('e1', 0, -1, 1, 0.01), \
+                dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
+    e2 = np.array(('e2', 0, -1, 1, 0.01), \
+            dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
     return { 'x_centre':x_centre, 'y_centre':y_centre, \
             'ellipticite':ellipticite, 'angle_pos':angle_pos, \
-            'm200':m200, 'concentration':concentration, 'alpha':alpha }
+            'm200':m200, 'concentration':concentration, 'alpha':alpha,\
+                 'e1':e1, 'e2':e2}
 
 def piemd():
     core_radius = np.array(('core_radius', 0, 0., 1000., 0.1), \
@@ -50,11 +54,15 @@ def piemd():
             dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
     v_disp = np.array(('v_disp', 0, 0., 1000., 0.01), \
             dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
+    e1 = np.array(('e1', 0, -1, 1, 0.01), \
+                dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
+    e2 = np.array(('e2', 0, -1, 1, 0.01), \
+            dtype=[('name', object), ('int', int),('lo', float), ('hi',object), ('res', float)])
 
     return { 'x_centre':x_centre, 'y_centre':y_centre, \
             'ellipticite':ellipticite, 'angle_pos':angle_pos, \
             'core_radius':core_radius, 'cut_radius':cut_radius, \
-            'v_disp':v_disp }
+            'v_disp':v_disp, 'e1':e1, 'e2':e2 }
 
 def skewed_piemd():
     core_radius = np.array(('core_radius', 1, 0., 1000., 0.1), \
