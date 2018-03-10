@@ -1,0 +1,303 @@
+import os as os
+import potentiels as pots
+import subprocess as sp
+import numpy as np
+import ipdb as pdb
+import read_par as rp
+import copy as cp
+import read_best as rb
+import lensing as lens
+
+def read_bayesresults( par_file,
+                       lenstool_dir='./',
+                       value_type='median',
+                       return_error=False,
+                       return_redshifts=False,
+                       return_potfile=False,
+                       return_all=False,
+                       verbose=False):
+    '''
+    Run the bayesResults.pl script from lenstool on
+    the bayes.dat.
+
+    Then read the results into a potential file
+
+    results file should be the full path length
+
+    par_file : the par file used to run the lenstool programme 
+    lenstool_dir : the path to the directory where bayes.dat is
+
+    At the moment only works for NFWs
+
+    the terms it returns are
+    stat   : index (using : as delimter)
+    median : 0
+    best   :1
+    mean   :2
+
+    UPDATE: Changed the way in which i link the potentials
+    in the bayes output to the original par file
+    as lenstool messes these up and just orders them
+    
+    
+    '''
+
+    #Record where i am first so i can return at the end
+    cwd = os.getcwd()  
+
+    #Move to the director with the bayes.dat and run bayesResuts.pl
+    os.chdir( lenstool_dir )
+    command=['/Users/DavidHarvey/Library/lenstool_cored/perl/bayesResults.pl']
+
+    process = sp.Popen(command,stdout=sp.PIPE)
+    
+    result = process.stdout.read().split('\n')
+   
+
+    #ids = get_halo_ids( result )
+
+    #poten_list = np.array([ pots.nfw() for i in xrange(len(ids))])
+
+    #Now get the references so i can add ra's, dec's and z_lens
+    run_mode, poten_list, limits, orig_image, orig_potfile \
+       = rp.read_par(par_file, par_dir=lenstool_dir, return_all=True)
+
+    orig_potfile = orig_potfile[0]
+    best_run, best_pot = rb.read_best(lenstool_dir+'/best.par')
+    
+    error_list = cp.deepcopy(poten_list)
+    
+    ra_ref = run_mode['reference']['ra']
+    dec_ref = run_mode['reference']['dec']
+
+    ids = np.array([ iPot['identity']['str'] for  iPot in poten_list])
+    #lenstool adds weird things to potential names
+    ids_with_O = np.array([ 'O'+iPot['identity']['str'] \
+                                for iPot in poten_list])
+   
+
+    if value_type == 'median':
+        index = 0
+    if value_type == 'best':
+        index = 1
+    if value_type == 'mean':
+        index = 2
+
+    i_list = np.arange(len(poten_list))
+
+    redshift_list = []
+    potfile = np.array([],dtype=[('name', object), ('units', object),
+                                    ('value', float), ('error', float)])
+    
+    for iRow in result:
+        #SOme have no length
+        if len(iRow) == 0:
+            continue
+        if (iRow.split()[0] == 'Read') | \
+          (iRow.split()[0] =='Param') | \
+          (iRow.split()[0] =='#ln(Lhood)') | \
+          (iRow.split()[0] =='#Chi2'):
+            
+            continue
+        
+        #split up the row the id will be the first ite,
+        #remove the first char as it is a #
+        split_row = iRow.split()
+        #Get the id from the bayes result, miss the first two characters
+        #as it is always '#O'
+        try:
+            iID = ids[ np.int(split_row[0][2:]) - 1]
+        except:
+            iID = split_row[0]
+        
+        if verbose:
+            print 'MATCHING', split_row[0][2:]
+        if np.any(iID == ids) | np.any(iID == ids_with_O):
+            if np.any(iID == ids):
+                id_index = i_list[iID == ids][0]
+            else:
+                id_index = i_list[iID == ids_with_O][0]
+
+                
+            par_vals = iRow.split(':')[2].split()[index]
+            par_errs = iRow.split(':')[2].split()[3][2:]
+            
+            parName = getPar( split_row[2] )
+            
+            meta_name = poten_list[id_index][parName].dtype.names[1]
+            dtype = poten_list[ id_index][parName].dtype[1]
+            poten_list[id_index ][parName][meta_name] = \
+              np.array(par_vals,dtype=dtype)
+
+            if parName == 'x_centre':
+                poten_list[ id_index]['ra']['float'] = \
+                  get_ra( ra_ref, dec_ref, np.float(par_vals))
+            elif parName == 'y_centre':
+                poten_list[ id_index ]['dec']['float'] = \
+                  (dec_ref + np.float(par_vals)/3600.)
+
+            
+            #Attach the errorbars
+            error_list[id_index][parName][meta_name] = \
+              np.array(par_errs,dtype=dtype)
+        
+        if iID == 'Redshift':
+            label = split_row[2]
+    
+            iRedshift = np.array((label, iRow.split(':')[1].split()[index],
+                    iRow.split(':')[1].split()[3][2:]),
+                    dtype=[('label', float), ('value', float),
+                                            ('error', float)])
+            redshift_list.append( iRedshift )
+
+        if iID == '#Pot0':
+            iPot = np.array((iRow.split(':')[0].split()[1],
+                             iRow.split(':')[0].split()[2],
+                             iRow.split(':')[1].split()[index],
+                             iRow.split(':')[1].split()[3][2:]),
+                             dtype=[('name', object), ('units', object),
+                                    ('value', float), ('error', float)])
+            
+            potfile = np.append( potfile, iPot )
+            orig_potfile = append_potfile( orig_potfile, iPot)
+            
+    poten_list = rp.add_galaxy_lenses( np.array(poten_list),
+                                            [orig_potfile], lenstool_dir, len(best_pot), len(limits) )
+
+    #I delete the ones from the potential list and then re-add them here
+    #there might be a better way to do this, but for now, this will do
+    poten_list = add_missed_potentials( poten_list, par_file, lenstool_dir)
+                 
+    os.chdir( cwd )
+    if return_error:
+        print 'RETURNING POT_LIST, ERROR_LIST'
+        return poten_list, error_list
+    elif return_redshifts:
+        print 'RETURNING REDSHIFT_LIST'
+        return  redshift_list
+    elif return_potfile:
+        print 'RETURNING POTFILE'
+        return potfile
+    elif return_all:
+        print 'RETURNING POT_LIST, ERROR_LIST, REDSHIFT_LIST, POTFILE'
+        return poten_list, error_list, redshift_list, potfile
+    else:
+        print 'RETURNING POT_LIST'
+        return poten_list
+    
+
+def get_ra( ra_ref, dec_ref, x_centre):
+    '''
+    Get the ra of an object given its ra reference
+    and the offset from this reference according
+    to lenstool
+
+    dec_ref and ra in degress x_centre in arcseconds
+    '''
+
+    return ra_ref - 1./np.cos(dec_ref*np.pi/180.)*x_centre/3600.
+
+
+
+
+    
+def get_halo_ids( results):
+
+    halos_id = np.array([])
+    for iRow in results:
+        if len(iRow) == 0:
+            continue
+        iID = iRow.split()[0]
+        
+        if ('#' in iID) & ('Lhood' not in iID) \
+          & ('Chi' not in iID):
+            halos_id = np.append( halos_id, iRow.split()[0] )
+
+
+    return np.unique(halos_id)
+            
+            
+def getPar( bayes_dat_par_name ):
+    '''
+    Given the rubbish naming of the bayes.dat
+    file the parname given does not
+    correspond to the same name in the
+    par file input so this will translate
+    '''
+    #For all potentials
+    if bayes_dat_par_name == 'x':
+        return 'x_centre'
+    elif bayes_dat_par_name == 'y':
+        return 'y_centre'
+    elif bayes_dat_par_name == 'emass':
+        return 'ellipticite'
+    elif bayes_dat_par_name == 'theta':
+        return 'angle_pos'
+    #For PIEMD only
+    elif bayes_dat_par_name == 'rc':
+        return 'core_radius'
+    elif bayes_dat_par_name == 'rcut':
+        return 'cut_radius'
+    elif bayes_dat_par_name == 'sigma':
+        return 'v_disp'
+    #For NFW only
+    elif bayes_dat_par_name == 'm200':
+        return 'm200'
+    elif bayes_dat_par_name == 'M200':
+        return 'm200'
+    elif bayes_dat_par_name == 'c':
+        return 'concentration'
+    elif bayes_dat_par_name == 'rs':
+        return 'scale_radius'
+    else:
+        return bayes_dat_par_name
+
+
+
+    
+def append_potfile( potfile, new_pot):
+    '''
+    Append the output of bayesresult for
+    the potfile and input into the
+    potfile strcutre to be used when adding
+    append the galay members
+    '''
+    
+    if new_pot['name'] == 'rcut':
+        #assuming rcut is in arcseconds
+        rcutkpc = new_pot['value'] / 206265 * \
+          lens.ang_distance(potfile['zlens']['float'])*1e3
+        
+        potfile['cutkpc']['lo'] = rcutkpc
+        potfile['cutkpc']['hi'] = rcutkpc
+
+    if new_pot['name'] == 'sigma':
+        
+        potfile['sigma']['lo'] = new_pot['value'] 
+        potfile['sigma']['hi'] = new_pot['value'] 
+  
+    return potfile
+def add_missed_potentials( poten_list, par_file, lenstool_dir):
+    '''
+    If potentials are in the par file, but not constrainted
+    then they wil be missed
+
+    so here i look in the par file and add potentials
+    that were in the final list
+    '''
+
+    run_mode, all_pot_list \
+       = rp.read_par(par_file, par_dir=lenstool_dir)
+
+
+    all_ids = np.array([ str(iPot['identity']['str']) for iPot in all_pot_list ])
+    have_ids =  np.array([ str(iPot['identity']['str']) for iPot in poten_list ])
+
+    for iPot in xrange(len(all_pot_list)):
+
+        if not np.any(all_ids[iPot] == have_ids):
+            poten_list.append( all_pot_list[iPot] )
+
+
+
+    return poten_list

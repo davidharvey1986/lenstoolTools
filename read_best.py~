@@ -1,0 +1,204 @@
+from lensing.lenstool import potentiels
+from write_par import *
+import csv as csv
+import ipdb as pdb
+
+def read_best( filename='best.par',
+               pot_type='AUTO',
+               verbose=False,
+               return_limits=False,
+               return_image=False):
+    '''
+    Read the input into lenstool, the .par file and read it
+    into a python class
+
+    It assumes that the input file is best.par however this
+    can be changed with the keyword
+
+    RETURNS :
+       2 Rec arrays 
+       - run_mode : contains the reference position of the halo
+       - potentiel_list : a n halo list of the potentiels found in the recon
+
+       For more information on these rec arrays see write_par.py and potentiels.py
+
+
+       BUGS:
+          It does require the output best.par to be in a paticular order
+          (the one output from lenstool)
+       UDPATE : CAN NOW READ INPUT PAR FILES (25/05/2016) DRH
+
+    '''
+
+    best_obj = open( filename, "rb")
+    run_mode = runmode()
+    mode = 'Comment'
+    pot = -1
+    ind=0
+    iLine=0
+
+    comment_flag = 0
+    limit_list = []
+    limit_flag = 0
+    z_m_limit = []
+    for iline in best_obj:
+        
+        line = iline.splitlines()[0].split('\t')
+
+        if verbose:
+            print line
+        if (line[0] != 'runmode') & (comment_flag ==0):
+            continue
+        
+        #if the length of the line is 1 then it is a key word
+        if line[0] == 'runmode':
+            mode='runmode'
+            comment_flag = 1
+                
+        if line[0] == 'grille':
+            mode='grille'
+
+        if line[0] == 'image':
+            mode='image'
+            ret_image = image()
+            
+        if (len(line) == 1):
+            if line[0].strip()[0] == '#':
+                if verbose:
+                    print 'SKIPPING',line
+                continue
+            if line[0].split()[0] == 'potentiel':
+                mode='potentiel'
+                pot +=1
+                pot_name = line[0].split()[1]
+                
+            if line[0].split()[0] == 'limit':
+                mode='limit'
+                limit_list.append(limits.get_limit( potentiel_list[pot]['profil']['int'] ))
+                limit_flag = 1
+        
+        if len(line) > 1:
+            if line[1].strip()[0] == '#':
+                if verbose:
+                    print 'SKIPPING ',line
+                continue
+            if line[1].strip() != 'end':
+                if (mode == 'runmode')  :
+                    option=line[1].split()
+                    keys = run_mode[option[0]].dtype.names
+                    for iKey in xrange(len(keys)):
+                        run_mode[option[0]][keys[iKey]] = option[iKey]
+                       
+                if (mode == 'grille'):
+                    option=line[1].split()
+                    #If the filename is the best.par then
+                    #the number of lenses is the nlentille
+                    #if the input par file then tihs is the nlens_opt
+                    if (option[0] == 'nlentille') | (option[0] == 'nlens'):
+                        nlens = np.int(option[1])
+                                        
+                        #If I assume pot is NFW use this
+                        #otherwise get the potentiel type automatically
+                        
+                        if pot_type == 'NFW':
+                            potentiel_list = [ potentiels.nfw() for i in xrange( nlens ) ]
+                        else:
+                            if pot_type == 'AUTO':
+                                potentiel_list = get_potential_list( best_file = filename )
+                
+                if (mode == 'image'):
+                    
+                    option=line[1].split()
+                    if (option[0] == 'z_m_limit'):
+                        dtype = [('name', object), ('im_label', float),
+                                  ('int', np.int), ('lo', float), ('hi', float), ('res', float)]
+                        iz_m_limit = np.array(('z_m_limit '+str(option[1]),
+                                               option[2],option[3],
+                                               option[4], option[5],
+                                               option[6]), dtype=dtype)
+                        ret_image[ 'z_m_limit '+str(option[1]) ] = \
+                          iz_m_limit
+                    else:
+                        image_keys = ret_image[option[0]].dtype.names
+                        for i in xrange( 1, len(image_keys) ):
+                            ret_image[ option[0] ][image_keys[i]] = option[i]
+                                               
+                if (mode == 'potentiel'):
+                    if pot >= nlens:
+                        continue
+                    option = line[1].split()
+                    try:
+                        data_type = potentiel_list[pot][option[0]].dtype.names[1]
+                        potentiel_list[pot][option[0]][data_type] = \
+                        np.array(option[1]).astype(data_type)
+                       
+                                   
+                    except:
+                        if verbose == True:
+                            print option[0],' does not exist in potentiel'
+                        else:
+                            pass
+                        
+                    ra_halo = run_mode['reference']['ra'] - \
+                          potentiel_list[pot]['x_centre']['float']/3600./\
+                          np.cos(run_mode['reference']['dec']*np.pi/180.)
+                    dec_halo = run_mode['reference']['dec'] + \
+                          potentiel_list[pot]['y_centre']['float']/3600.
+                        
+                    potentiel_list[pot]['ra'] = \
+                          np.array(('ra', ra_halo), dtype=[('name', object), ('float', float)])
+                    potentiel_list[pot]['dec'] = \
+                          np.array(('dec', dec_halo), dtype=[('name', object), ('float', float)])
+                    potentiel_list[pot]['identity'] =\
+                        np.array(('identity', pot_name), dtype=[('name', object), ('str', object)])
+                    
+                if (mode == 'limit'):
+                    option = line[1].split()
+                    try:
+                        data_type = limit_list[pot][option[0]].dtype.names[1]
+                        limit_list[pot][option[0]][data_type] = \
+                            np.array(option[1]).astype(data_type)
+                    except:
+                        if verbose == True:
+                            print option[0],' does not exist in potentiel'
+                        else:
+                            pass
+                    
+            else:
+                mode = 'end'
+
+                
+    if return_limits:
+        if limit_flag == 1:
+            return run_mode, potentiel_list, limit_list
+        else:
+            print 'NO LIMIT SECTION > IS THIS A BEST.PAR?'
+            return 0
+    elif return_image:
+        return ret_image
+    else:
+        return run_mode, potentiel_list
+                    
+
+                    
+                
+def get_potential_list( best_file='best.par', verbose=False ):
+    '''
+    Run this script to get the list of potentials
+    which may not be necessarily NFW
+
+
+    Currently only valid for NFW or PIEMD since these
+    are the only ones in limit.py and potentiels.py
+
+    '''
+
+    run_mode, pots = read_best( best_file, pot_type='NFW', verbose=verbose )
+    
+    return [ potentiels.get_profile(iPot['profil']['int']) for iPot in pots ]
+
+def get_limit_list( pots ):
+
+    
+    return [ limits.get_limit( iPot['profil']['int']) for iPot in pots ]
+    
